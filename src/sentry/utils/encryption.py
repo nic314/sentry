@@ -25,21 +25,27 @@ class EncryptionManager(object):
             return value
         value = smart_bytes(value)
         scheme = self.schemes[self.default_scheme]
-        return b'{}${}'.format(self.default_scheme, scheme.encrypt(value))
+        return b'\x00{}${}'.format(self.default_scheme, scheme.encrypt(value))
 
     def decrypt(self, value):
+        # we assume that if encryption is not configured, it was never
+        # configured
+        if not self.schemes:
+            return value
+        if not value.startswith(b'\x00'):
+            return value
         try:
-            enc_method, enc_data = value.split('$', 1)
+            enc_method, enc_data = value[1:].split('$', 1)
         except (ValueError, IndexError):
-            pass
-        else:
-            enc_data = smart_bytes(enc_data)
-            try:
-                scheme = self.schemes[enc_method]
-            except KeyError:
-                raise ValueError('Unknown encryption scheme: %s'.format(enc_method))
-            value = scheme.decrypt(enc_data)
-        return value
+            return value
+        if not enc_method:
+            return value
+        enc_data = smart_bytes(enc_data)
+        try:
+            scheme = self.schemes[enc_method]
+        except KeyError:
+            raise ValueError('Unknown encryption scheme: {!r}'.format(enc_method))
+        return scheme.decrypt(enc_data)
 
 default_manager = EncryptionManager(settings.SENTRY_ENCRYPTION_SCHEMES)
 
